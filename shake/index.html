@@ -116,6 +116,7 @@ function hit(v){if(v>220&&navigator.vibrate){try{navigator.vibrate(Math.min(25,M
 // physics: gravity along the tilt, an invisible string to the middle, shake kicks,
 // drag, rolling resistance, walls keep 92%
 const SHAKE=1.6;   // how hard a shake flings the ball
+const TILT=5;      // how strongly tilting pulls the ball (string strength stays the same)
 function step(dt){
   const k0=Math.min(1,dt*12);sx+=(tx-sx)*k0;sy+=(ty-sy)*k0;
   if(drag)return;
@@ -124,8 +125,8 @@ function step(dt){
   const cx=(B.l+B.r)/2,cy=(B.t+B.b)/2,reach=Math.max(1,Math.min(B.r-B.l,B.b-B.t)/2-r);
   const k=G/(reach*.5);
   if(performance.now()-shT>120){shx=shy=0;}
-  const ax=sx*G-k*(ball.x-cx)-shx*SHAKE*G/9.81;
-  const ay=sy*G-k*(ball.y-cy)-shy*SHAKE*G/9.81;
+  const ax=sx*TILT*G-k*(ball.x-cx)-shx*SHAKE*G/9.81;
+  const ay=sy*TILT*G-k*(ball.y-cy)-shy*SHAKE*G/9.81;
   ball.vx+=ax*dt;ball.vy+=ay*dt;
   const f=Math.exp(-1.1*dt);ball.vx*=f;ball.vy*=f;
   const s=Math.hypot(ball.vx,ball.vy),roll=26*dt;
