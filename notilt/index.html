@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<title>No tilt</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;overscroll-behavior:none}
+  body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;font:15px/1.4 system-ui,-apple-system,sans-serif}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #note{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 34px);text-align:center;color:#000;font-size:13px;pointer-events:none;transition:opacity 1.2s}
+  #note.off{opacity:0}
+</style>
+</head>
+<body>
+<canvas id="t"></canvas>
+<div id="note">Grab the ball and throw it.</div>
+<script>
+{
+// No tilt: zero gravity, slow motion. The ball drifts until it hits a wall.
+const SLOW=.4;      // time runs at 40% speed, for the ball and for your finger
+const FOLLOW=7;     // how quickly the ball catches up with your finger while held
+const DRIFT=.03;    // almost no air: a thrown ball keeps floating for a long time
+const BOUNCE=.92;   // walls keep 92% of the speed
+const MAXV=3000;    // speed limit for a throw, in pixels per second
+
+const cv=document.getElementById('t'),ctx=cv.getContext('2d'),note=document.getElementById('note');
+let W=0,H=0,dpr=1,ball={x:0,y:0,vx:0,vy:0,r:20},inset={t:0,b:0,l:0,r:0};
+
+function readInsets(){
+  const p=document.createElement('div');
+  p.style.cssText='position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);right:env(safe-area-inset-right)';
+  document.body.appendChild(p);const b=p.getBoundingClientRect();
+  inset={t:b.top,l:b.left,b:innerHeight-b.bottom,r:innerWidth-b.right};p.remove();
+}
+function fit(){
+  const ox=W?ball.x/W:.5,oy=H?ball.y/H:.5;
+  W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,3);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);readInsets();
+  ball.r=Math.round(Math.min(W,H)*.055);ball.x=ox*W;ball.y=oy*H;
+}
+addEventListener('resize',fit);fit();
+
+// walls: the screen edges, clear of the notch and home bar
+function bounds(){return {l:inset.l,t:inset.t,r:W-inset.r,b:H-inset.b};}
+
+// hold and throw: the ball floats after your finger instead of snapping to it,
+// and keeps the speed it had when you let go
+let drag=false,fx=0,fy=0;
+cv.addEventListener('pointerdown',e=>{
+  const dx=e.clientX-ball.x,dy=e.clientY-ball.y;
+  if(dx*dx+dy*dy<(ball.r*3)**2){
+    drag=true;fx=e.clientX;fy=e.clientY;note.classList.add('off');
+    try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  }
+});
+cv.addEventListener('pointermove',e=>{if(drag){fx=e.clientX;fy=e.clientY;}});
+function release(){drag=false;}
+cv.addEventListener('pointerup',release);cv.addEventListener('pointercancel',release);
+
+function hit(v){if(v>150&&navigator.vibrate){try{navigator.vibrate(Math.min(20,Math.round(v/80)))}catch(_){}}}
+
+function step(dt){
+  if(drag){
+    ball.vx=(fx-ball.x)*FOLLOW;ball.vy=(fy-ball.y)*FOLLOW;
+  }else{
+    const f=Math.exp(-DRIFT*dt);ball.vx*=f;ball.vy*=f;
+  }
+  const s=Math.hypot(ball.vx,ball.vy);if(s>MAXV){ball.vx*=MAXV/s;ball.vy*=MAXV/s;}
+  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  const B=bounds(),r=ball.r;
+  if(ball.x<B.l+r){ball.x=B.l+r;if(ball.vx<0){hit(-ball.vx);ball.vx=-ball.vx*BOUNCE}}
+  if(ball.x>B.r-r){ball.x=B.r-r;if(ball.vx>0){hit(ball.vx);ball.vx=-ball.vx*BOUNCE}}
+  if(ball.y<B.t+r){ball.y=B.t+r;if(ball.vy<0){hit(-ball.vy);ball.vy=-ball.vy*BOUNCE}}
+  if(ball.y>B.b-r){ball.y=B.b-r;if(ball.vy>0){hit(ball.vy);ball.vy=-ball.vy*BOUNCE}}
+}
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#000';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,7);ctx.fill();
+}
+
+ball.x=W/2;ball.y=H/2;
+let last=performance.now();
+(function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000||.016)*SLOW;last=now;
+  step(dt/2);step(dt/2);draw();
+})(performance.now());
+}
+</script>
+</body>
+</html>
