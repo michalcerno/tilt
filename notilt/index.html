@@ -23,8 +23,8 @@ const SLOW=.4;      // time runs at 40% speed, for the ball and for your finger
 const FOLLOW=7;     // how quickly the ball catches up with your finger while held
 const DRIFT=.03;    // almost no air: a thrown ball keeps floating for a long time
 const BOUNCE=.92;   // walls keep 92% of the speed
-const MAXV=7000;    // speed limit for a throw, in pixels per second
-const THROW=.5;     // how much of your finger's speed the ball takes on release
+const MAXV=17500;    // speed limit for a throw, in pixels per second
+const THROW=1.25;     // how much of your finger's speed the ball takes on release
 const FLICK=2500;   // fast flicks get extra: at this finger speed (px/s) the boost doubles
 
 const cv=document.getElementById('t'),ctx=cv.getContext('2d'),note=document.getElementById('note');
