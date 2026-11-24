@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<title>Tilt shake</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;overscroll-behavior:none}
+  body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;font:15px/1.4 system-ui,-apple-system,sans-serif}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #gate{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.85);transition:opacity .4s}
+  #gate.off{opacity:0;pointer-events:none}
+  #gate div{text-align:center;color:#000;padding:24px;max-width:320px}
+  #gate p{margin:12px 0 0;color:#000}
+  #go{font:500 17px/1 system-ui,-apple-system,sans-serif;color:#fff;background:#000;border:0;border-radius:999px;padding:16px 28px;min-height:48px;cursor:pointer}
+  #note{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 34px);text-align:center;color:#000;font-size:13px;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="t"></canvas>
+<div id="note"></div>
+<div id="gate"><div>
+  <button id="go" type="button">Start</button>
+  <p id="msg">The ball is tied to the middle by an invisible string. Tilt to pull it, shake the phone to fling it.</p>
+</div></div>
+<script>
+{
+const cv=document.getElementById('t'),ctx=cv.getContext('2d'),gate=document.getElementById('gate'),msg=document.getElementById('msg'),note=document.getElementById('note');
+let W=0,H=0,dpr=1,rail=0,ball={x:0,y:0,vx:0,vy:0,r:20},tx=0,ty=0,sx=0,sy=0,got=false;
+let inset={t:0,b:0,l:0,r:0};
+let shx=0,shy=0,shT=0,lpx=null,lpy=0,lpz=0;
+
+function readInsets(){
+  const p=document.createElement('div');
+  p.style.cssText='position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);right:env(safe-area-inset-right)';
+  document.body.appendChild(p);const b=p.getBoundingClientRect();
+  inset={t:b.top,l:b.left,b:innerHeight-b.bottom,r:innerWidth-b.right};p.remove();
+}
+function fit(){
+  const ox=W?ball.x/W:.5,oy=H?ball.y/H:.5;
+  W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,3);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);readInsets();
+  const m=Math.min(W,H);rail=0;ball.r=Math.round(m*.055);
+  ball.x=ox*W;ball.y=oy*H;
+}
+addEventListener('resize',fit);fit();
+
+// walls: the screen edges, clear of the notch and home bar
+function bounds(){return {l:inset.l+rail,t:inset.t+rail,r:W-inset.r-rail,b:H-inset.b-rail};}
+
+// tilt: gamma = left/right, beta = front/back; rotate into screen axes
+function onOri(e){
+  if(e.beta==null||e.gamma==null)return;
+  if(!got){got=true;note.textContent='';}
+  const b=Math.max(-90,Math.min(90,e.beta))*Math.PI/180,g=e.gamma*Math.PI/180;
+  const gx=Math.sin(g),gy=Math.sin(b);
+  const a=((screen.orientation&&screen.orientation.angle)??(window.orientation||0))*Math.PI/180;
+  tx=gx*Math.cos(a)+gy*Math.sin(a);
+  ty=-gx*Math.sin(a)+gy*Math.cos(a);
+}
+function listen(){
+  addEventListener('deviceorientation',onOri);
+  addEventListener('devicemotion',onMotion);
+  setTimeout(()=>{if(!got)note.textContent="No tilt data from this browser. Drag and flick the ball.";},1500);
+}
+document.getElementById('go').addEventListener('click',()=>{
+  const D=window.DeviceOrientationEvent,M=window.DeviceMotionEvent;
+  if(D&&typeof D.requestPermission==='function'){
+    const asks=[D.requestPermission()];
+    if(M&&typeof M.requestPermission==='function')asks.push(M.requestPermission());
+    Promise.all(asks).then(rs=>{
+      if(rs[0]==='granted')listen();else note.textContent='Motion access was declined. Drag and flick the ball.';
+      gate.classList.add('off');
+    }).catch(()=>{note.textContent='Motion access is unavailable here. Drag and flick the ball.';gate.classList.add('off');});
+  }else{if(D)listen();else note.textContent='No tilt sensor. Drag and flick the ball.';gate.classList.add('off');}
+});
+
+// shake: the phone's own acceleration (gravity removed). When the phone jerks one way,
+// the ball is left behind and moves the other way on screen.
+function onMotion(e){
+  let a=e.acceleration,x,y;
+  if(a&&a.x!=null){x=a.x;y=a.y;}
+  else{
+    const g=e.accelerationIncludingGravity;if(!g||g.x==null)return;
+    if(lpx===null){lpx=g.x;lpy=g.y;}
+    lpx+=(g.x-lpx)*.1;lpy+=(g.y-lpy)*.1;x=g.x-lpx;y=g.y-lpy;
+  }
+  if(Math.hypot(x,y)<1.2){shx=shy=0;return;}   // ignore hand tremor
+  // device axes: x right, y up. Screen axes: x right, y down. Then undo screen rotation.
+  const dx=x,dy=-y,o=((screen.orientation&&screen.orientation.angle)??(window.orientation||0))*Math.PI/180;
+  shx=dx*Math.cos(o)+dy*Math.sin(o);shy=-dx*Math.sin(o)+dy*Math.cos(o);shT=performance.now();
+}
+
+// drag and flick
+let drag=false,trail=[];
+const pos=e=>({x:e.clientX,y:e.clientY,t:performance.now()});
+cv.addEventListener('pointerdown',e=>{
+  const p=pos(e),dx=p.x-ball.x,dy=p.y-ball.y;
+  if(dx*dx+dy*dy<(ball.r*2.4)**2){drag=true;trail=[p];ball.vx=ball.vy=0;try{cv.setPointerCapture(e.pointerId)}catch(_){}}
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;const p=pos(e),B=bounds();trail.push(p);if(trail.length>8)trail.shift();
+  ball.x=Math.max(B.l+ball.r,Math.min(B.r-ball.r,p.x));ball.y=Math.max(B.t+ball.r,Math.min(B.b-ball.r,p.y));
+});
+function release(){
+  if(!drag)return;drag=false;const now=performance.now();let a=trail[0];const b=trail[trail.length-1];
+  for(const q of trail){if(now-q.t<90){a=q;break;}}
+  const dt=(b.t-a.t)/1000;if(dt>.005&&now-b.t<120){ball.vx=(b.x-a.x)/dt;ball.vy=(b.y-a.y)/dt;}
+  const m=4000,s=Math.hypot(ball.vx,ball.vy);if(s>m){ball.vx*=m/s;ball.vy*=m/s;}
+}
+cv.addEventListener('pointerup',release);cv.addEventListener('pointercancel',release);
+
+function hit(v){if(v>220&&navigator.vibrate){try{navigator.vibrate(Math.min(25,Math.round(v/60)))}catch(_){}}}
+
+// physics: gravity along the tilt, an invisible string to the middle, shake kicks,
+// drag, rolling resistance, walls keep 92%
+const SHAKE=1.6;   // how hard a shake flings the ball
+function step(dt){
+  const k0=Math.min(1,dt*12);sx+=(tx-sx)*k0;sy+=(ty-sy)*k0;
+  if(drag)return;
+  const B=bounds(),r=ball.r,G=2600*(Math.min(W,H)/380);
+  // string: 50:50 with tilt. At full tilt the ball settles halfway between the middle and the wall.
+  const cx=(B.l+B.r)/2,cy=(B.t+B.b)/2,reach=Math.max(1,Math.min(B.r-B.l,B.b-B.t)/2-r);
+  const k=G/(reach*.5);
+  if(performance.now()-shT>120){shx=shy=0;}
+  const ax=sx*G-k*(ball.x-cx)-shx*SHAKE*G/9.81;
+  const ay=sy*G-k*(ball.y-cy)-shy*SHAKE*G/9.81;
+  ball.vx+=ax*dt;ball.vy+=ay*dt;
+  const f=Math.exp(-1.1*dt);ball.vx*=f;ball.vy*=f;
+  const s=Math.hypot(ball.vx,ball.vy),roll=26*dt;
+  if(s<roll&&Math.hypot(ax,ay)<G*.04){ball.vx=ball.vy=0}
+  else if(s>0){const q=Math.max(0,s-roll)/s;ball.vx*=q;ball.vy*=q;}
+  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  const e=.92;
+  if(ball.x<B.l+r){ball.x=B.l+r;if(ball.vx<0){hit(-ball.vx);ball.vx=-ball.vx*e}}
+  if(ball.x>B.r-r){ball.x=B.r-r;if(ball.vx>0){hit(ball.vx);ball.vx=-ball.vx*e}}
+  if(ball.y<B.t+r){ball.y=B.t+r;if(ball.vy<0){hit(-ball.vy);ball.vy=-ball.vy*e}}
+  if(ball.y>B.b-r){ball.y=B.b-r;if(ball.vy>0){hit(ball.vy);ball.vy=-ball.vy*e}}
+}
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#000';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,7);ctx.fill();
+}
+
+ball.x=W/2;ball.y=H/2;
+let last=performance.now();
+(function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
+  step(dt/2);step(dt/2);draw();
+})(performance.now());
+}
+</script>
+</body>
+</html>
