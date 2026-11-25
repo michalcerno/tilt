@@ -17,12 +17,14 @@
   #modes button:focus-visible,#shake:focus-visible{outline:2px solid #000;outline-offset:3px}
   #shake{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 84px);
     font:500 14px/1 system-ui,-apple-system,sans-serif;color:#000;background:#fff;border:1.5px dashed #000;border-radius:999px;padding:11px 16px;min-height:42px;cursor:pointer;white-space:nowrap}
+  #help{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 136px);margin:0 auto;max-width:340px;padding:0 16px;text-align:center;font-size:13px;line-height:1.4;color:#000}
   #shake[disabled]{border-style:solid;cursor:default;opacity:.6}
 </style>
 </head>
 <body>
 <canvas id="balls" role="img" aria-label="A greeting drawn with dots that move away from your finger"></canvas>
 <button id="shake" type="button">Turn on shake</button>
+<p id="help" hidden></p>
 <div id="modes" role="group" aria-label="Greeting">
   <button type="button" data-mode="full">Hello, I'm Michal.</button>
   <button type="button" data-mode="hello">Hello.</button>
@@ -164,14 +166,27 @@ function onMotion(e){
     const r=1+SCATTER*(Math.random()*2-1),t=(Math.random()*2-1)*SCATTER;
     c.vx+=-(sx*r-sy*t)*k;c.vy+=-(sy*r+sx*t)*k;c.awayFrames=0;c.ghost=false;}
 }
-function shakeOn(){addEventListener('devicemotion',onMotion);shakeBtn.textContent='Shake your phone';shakeBtn.disabled=true;}
-function shakeFail(t){shakeBtn.textContent=t;shakeBtn.disabled=true;}
+function shakeOn(){addEventListener('devicemotion',onMotion);shakeBtn.textContent='Shake your phone';shakeBtn.disabled=true;helpEl.hidden=true;}
+function shakeFail(t,help){
+  shakeBtn.textContent=t+' · Try again';shakeBtn.disabled=false;
+  helpEl.textContent=help||'';helpEl.hidden=!help;
+}
+const helpEl=document.getElementById('help');
+const HELP_DECLINED='Your iPhone said no without asking? Open this page in Safari (not inside another app). '+
+  'If you tapped Don\'t Allow before, close all Safari tabs of this site, reopen it and tap Allow.';
+// Ask for motion and orientation in the same tap: on iPhone they're one permission,
+// and some iOS versions only show the prompt for one of the two.
 shakeBtn.addEventListener('click',()=>{
-  const M=window.DeviceMotionEvent;
+  const M=window.DeviceMotionEvent,D=window.DeviceOrientationEvent;
   if(!M)return shakeFail('No motion sensor here');
-  if(typeof M.requestPermission==='function')
-    M.requestPermission().then(r=>r==='granted'?shakeOn():shakeFail('Motion access was declined')).catch(()=>shakeFail('Motion access is unavailable'));
-  else shakeOn();
+  const asks=[];
+  if(typeof M.requestPermission==='function')asks.push(M.requestPermission().catch(()=>'error'));
+  if(D&&typeof D.requestPermission==='function')asks.push(D.requestPermission().catch(()=>'error'));
+  if(!asks.length)return shakeOn();
+  Promise.all(asks).then(rs=>{
+    if(rs.includes('granted'))shakeOn();
+    else shakeFail('Motion access was declined',HELP_DECLINED);
+  });
 });
 
 build('full');
