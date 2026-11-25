@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#3a2418">
+<title>Classic table</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#3a2418;overscroll-behavior:none}
+  body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;font:15px/1.4 system-ui,-apple-system,sans-serif}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #gate{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,16,6,.55);transition:opacity .4s}
+  #gate.off{opacity:0;pointer-events:none}
+  #gate div{text-align:center;color:#f3efe6;padding:24px;max-width:320px}
+  #gate p{margin:12px 0 0;color:#cfd8c4}
+  #go{font:500 17px/1 system-ui,-apple-system,sans-serif;color:#111;background:#f3efe6;border:0;border-radius:999px;padding:16px 28px;min-height:48px;cursor:pointer}
+  #note{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 34px);text-align:center;color:rgba(255,255,255,.55);font-size:13px;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="t"></canvas>
+<div id="note"></div>
+<div id="gate"><div>
+  <button id="go" type="button">Start</button>
+  <p id="msg">Tilt your phone to roll the ball. You can also drag and flick it.</p>
+</div></div>
+<script>
+{
+const cv=document.getElementById('t'),ctx=cv.getContext('2d'),gate=document.getElementById('gate'),msg=document.getElementById('msg'),note=document.getElementById('note');
+let W=0,H=0,dpr=1,rail=0,ball={x:0,y:0,vx:0,vy:0,r:20},tx=0,ty=0,sx=0,sy=0,got=false;
+let inset={t:0,b:0,l:0,r:0};
+
+function readInsets(){
+  const p=document.createElement('div');
+  p.style.cssText='position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);right:env(safe-area-inset-right)';
+  document.body.appendChild(p);const b=p.getBoundingClientRect();
+  inset={t:b.top,l:b.left,b:innerHeight-b.bottom,r:innerWidth-b.right};p.remove();
+}
+function fit(){
+  const ox=W?ball.x/W:.5,oy=H?ball.y/H:.5;
+  W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,3);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);readInsets();
+  const m=Math.min(W,H);rail=Math.round(m*.07);ball.r=Math.round(m*.055);
+  ball.x=ox*W;ball.y=oy*H;
+}
+addEventListener('resize',fit);fit();
+
+// felt bounds: inside the wooden rail, clear of the notch and home bar
+function bounds(){return {l:inset.l+rail,t:inset.t+rail,r:W-inset.r-rail,b:H-inset.b-rail};}
+
+// tilt: gamma = left/right, beta = front/back; rotate into screen axes
+function onOri(e){
+  if(e.beta==null||e.gamma==null)return;
+  if(!got){got=true;note.textContent='';}
+  const b=Math.max(-90,Math.min(90,e.beta))*Math.PI/180,g=e.gamma*Math.PI/180;
+  const gx=Math.sin(g),gy=Math.sin(b);
+  const a=((screen.orientation&&screen.orientation.angle)??(window.orientation||0))*Math.PI/180;
+  tx=gx*Math.cos(a)+gy*Math.sin(a);
+  ty=-gx*Math.sin(a)+gy*Math.cos(a);
+}
+function listen(){
+  addEventListener('deviceorientation',onOri);
+  setTimeout(()=>{if(!got)note.textContent="No tilt data from this browser. Drag and flick the ball.";},1500);
+}
+document.getElementById('go').addEventListener('click',()=>{
+  const D=window.DeviceOrientationEvent;
+  if(D&&typeof D.requestPermission==='function'){
+    D.requestPermission().then(r=>{
+      if(r==='granted')listen();else note.textContent='Motion access was declined. Drag and flick the ball.';
+      gate.classList.add('off');
+    }).catch(()=>{note.textContent='Motion access is unavailable here. Drag and flick the ball.';gate.classList.add('off');});
+  }else{if(D)listen();else note.textContent='No tilt sensor. Drag and flick the ball.';gate.classList.add('off');}
+});
+
+// drag and flick
+let drag=false,trail=[];
+const pos=e=>({x:e.clientX,y:e.clientY,t:performance.now()});
+cv.addEventListener('pointerdown',e=>{
+  const p=pos(e),dx=p.x-ball.x,dy=p.y-ball.y;
+  if(dx*dx+dy*dy<(ball.r*2.4)**2){drag=true;trail=[p];ball.vx=ball.vy=0;try{cv.setPointerCapture(e.pointerId)}catch(_){}}
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;const p=pos(e),B=bounds();trail.push(p);if(trail.length>8)trail.shift();
+  ball.x=Math.max(B.l+ball.r,Math.min(B.r-ball.r,p.x));ball.y=Math.max(B.t+ball.r,Math.min(B.b-ball.r,p.y));
+});
+function release(){
+  if(!drag)return;drag=false;const now=performance.now();let a=trail[0];const b=trail[trail.length-1];
+  for(const q of trail){if(now-q.t<90){a=q;break;}}
+  const dt=(b.t-a.t)/1000;if(dt>.005&&now-b.t<120){ball.vx=(b.x-a.x)/dt;ball.vy=(b.y-a.y)/dt;}
+  const m=4000,s=Math.hypot(ball.vx,ball.vy);if(s>m){ball.vx*=m/s;ball.vy*=m/s;}
+}
+cv.addEventListener('pointerup',release);cv.addEventListener('pointercancel',release);
+
+function hit(v){if(v>220&&navigator.vibrate){try{navigator.vibrate(Math.min(25,Math.round(v/60)))}catch(_){}}}
+
+// physics: gravity along the tilt, felt drag, rolling resistance, cushions keep 72%
+function step(dt){
+  const k=Math.min(1,dt*12);sx+=(tx-sx)*k;sy+=(ty-sy)*k;
+  if(drag)return;
+  const G=2600*(Math.min(W,H)/380);
+  ball.vx+=sx*G*dt;ball.vy+=sy*G*dt;
+  const f=Math.exp(-.55*dt);ball.vx*=f;ball.vy*=f;
+  const s=Math.hypot(ball.vx,ball.vy),roll=26*dt;
+  if(s<roll&&Math.hypot(sx,sy)<.035){ball.vx=ball.vy=0}
+  else if(s>0){const q=Math.max(0,s-roll)/s;ball.vx*=q;ball.vy*=q;}
+  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  const B=bounds(),r=ball.r,e=.72;
+  if(ball.x<B.l+r){ball.x=B.l+r;if(ball.vx<0){hit(-ball.vx);ball.vx=-ball.vx*e}}
+  if(ball.x>B.r-r){ball.x=B.r-r;if(ball.vx>0){hit(ball.vx);ball.vx=-ball.vx*e}}
+  if(ball.y<B.t+r){ball.y=B.t+r;if(ball.vy<0){hit(-ball.vy);ball.vy=-ball.vy*e}}
+  if(ball.y>B.b-r){ball.y=B.b-r;if(ball.vy>0){hit(ball.vy);ball.vy=-ball.vy*e}}
+}
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const B=bounds();
+  // wooden rail
+  ctx.fillStyle='#3a2418';ctx.fillRect(0,0,W,H);
+  // cushion lip
+  ctx.fillStyle='#24480c';ctx.fillRect(B.l-rail*.32,B.t-rail*.32,B.r-B.l+rail*.64,B.b-B.t+rail*.64);
+  // felt, a touch lighter in the middle
+  const cx=(B.l+B.r)/2,cy=(B.t+B.b)/2,g=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.hypot(B.r-B.l,B.b-B.t)/1.6);
+  g.addColorStop(0,'#3f7a14');g.addColorStop(1,'#2f5f0e');ctx.fillStyle=g;ctx.fillRect(B.l,B.t,B.r-B.l,B.b-B.t);
+  // diamonds on the rail
+  ctx.fillStyle='#e9dcc0';
+  const dia=(x,y)=>{ctx.beginPath();ctx.moveTo(x,y-3.5);ctx.lineTo(x+2.5,y);ctx.lineTo(x,y+3.5);ctx.lineTo(x-2.5,y);ctx.fill();};
+  const mt=(B.t-rail*.32)/2+inset.t/2,mb=(H+B.b+rail*.32)/2-inset.b/2,ml=(B.l-rail*.32)/2+inset.l/2,mr=(W+B.r+rail*.32)/2-inset.r/2;
+  for(let i=1;i<4;i++){const x=B.l+(B.r-B.l)*i/4;dia(x,mt);dia(x,mb);}
+  for(let i=1;i<8;i++){if(i===4)continue;const y=B.t+(B.b-B.t)*i/8;dia(ml,y);dia(mr,y);}
+  // head string and spot
+  ctx.strokeStyle='rgba(255,255,255,.09)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(B.l,B.t+(B.b-B.t)*.75);ctx.lineTo(B.r,B.t+(B.b-B.t)*.75);ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.14)';ctx.beginPath();ctx.arc(cx,B.t+(B.b-B.t)*.25,3,0,7);ctx.fill();
+  // ball: shadow falls away from the low side, so it reads as light from above
+  const r=ball.r;
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(ball.x+r*.2,ball.y+r*.3,r*1.03,r*.96,0,0,7);ctx.fill();
+  const bg=ctx.createRadialGradient(ball.x-r*.35,ball.y-r*.4,r*.1,ball.x,ball.y,r);
+  bg.addColorStop(0,'#3a3a3e');bg.addColorStop(.55,'#141416');bg.addColorStop(1,'#050506');
+  ctx.fillStyle=bg;ctx.beginPath();ctx.arc(ball.x,ball.y,r,0,7);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.6)';ctx.beginPath();ctx.ellipse(ball.x-r*.38,ball.y-r*.42,r*.2,r*.13,-.7,0,7);ctx.fill();
+}
+
+ball.x=W/2;ball.y=H/2;
+let last=performance.now();
+(function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
+  step(dt/2);step(dt/2);draw();
+})(performance.now());
+}
+</script>
+<script src="../versions.js"></script>
+</body>
+</html>
