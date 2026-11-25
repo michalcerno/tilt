@@ -8,6 +8,7 @@
     {path:'shake/',  name:'Tilt shake',    about:'The ball is tied to the middle by an invisible string. Tilt and shake.'},
     {path:'notilt/', name:'No tilt',       about:'Zero gravity in slow motion. Grab the ball and throw it.'},
     {path:'bouncer/',name:'Bouncer',       about:'Zero gravity. Move the black ball only by hitting it with the red one.'},
+    {path:'hello/',  name:'Hello',         about:'A greeting made of dots that scatter from your finger. Pick Hello, I\'m Michal. / Hello. / Hi.'},
   ];
   const base=new URL('./',document.currentScript.src);
   const here=location.pathname.replace(/index\.html$/,'');

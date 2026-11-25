@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<title>Hello</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;overscroll-behavior:none}
+  body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;font:15px/1.4 system-ui,-apple-system,sans-serif}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #modes{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 24px);display:flex;justify-content:center;flex-wrap:wrap;gap:8px;
+    padding:0 max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}
+  #modes button{font:500 15px/1 system-ui,-apple-system,sans-serif;color:#000;background:#fff;border:1.5px solid #000;border-radius:999px;
+    padding:12px 18px;min-height:44px;cursor:pointer}
+  #modes button[aria-pressed="true"]{background:#000;color:#fff}
+  #modes button:focus-visible{outline:2px solid #000;outline-offset:3px}
+</style>
+</head>
+<body>
+<canvas id="balls" role="img" aria-label="A greeting drawn with dots that move away from your finger"></canvas>
+<div id="modes" role="group" aria-label="Greeting">
+  <button type="button" data-mode="full">Hello, I'm Michal.</button>
+  <button type="button" data-mode="hello">Hello.</button>
+  <button type="button" data-mode="hi">Hi</button>
+</div>
+<script>
+{
+// Hello: the typography game from the portfolio hero, on its own page.
+// Dots form a greeting; your finger pushes them away and they find their way back.
+// Physics and letter dots are copied from the hero (units = its 1920x1080 canvas).
+const cv=document.getElementById('balls'),ctx=cv.getContext('2d');
+const ballRadius=8.74,minDistance=2.43;
+const pushStrength=0.075,friction=0.9,maxSpeed=10.93,returnGain=0.02,returnMaxSpeed=2.31,
+      steer=0.08,wallBounce=0.5,collisionSoftness=0.5;
+const swapTriesPerLetter=40,ghostAfter=420,snapDistance=0.3;
+// [x, y, letter]: letters 0-4 HELLO, 5-7 I'M, 8-12 MICHA L... 13 is the full stop, 14 the M of MICHAL
+const P=[[309,274.6,0],[330.8,296.8,0],[330.8,318.7,0],[330.8,340.9,0],[353.1,363.1,0],[375.3,385,0],[397.2,385,0],[419.4,407.2,0],[441.6,429.5,0],[441.6,451.3,0],[441.6,473.6,0],[441.6,495.8,0],[419.4,495.8,0],[419.4,473.6,0],[419.4,451.3,0],[441.6,407.2,0],[441.6,385,0],[441.6,363.1,0],[441.6,340.9,0],[441.6,318.7,0],[441.6,296.8,0],[441.6,274.6,0],[419.4,274.6,0],[419.4,296.8,0],[419.4,318.7,0],[419.4,340.9,0],[419.4,429.5,0],[419.4,385,0],[419.4,363.1,0],[397.2,363.1,0],[375.3,363.1,0],[353.1,385,0],[330.8,407.2,0],[330.8,429.5,0],[330.8,451.3,0],[330.8,473.6,0],[330.8,495.8,0],[309,495.8,0],[309,473.6,0],[309,451.3,0],[309,429.5,0],[309,407.2,0],[309,385,0],[330.8,385,0],[330.8,363.1,0],[309,363.1,0],[309,340.9,0],[309,318.7,0],[330.8,274.6,0],[309,296.8,0],[487.9,274.6,1],[509.7,296.8,1],[531.9,296.8,1],[554.2,296.8,1],[576,296.8,1],[598.3,296.8,1],[620.5,296.8,1],[620.5,274.6,1],[598.3,274.6,1],[576,274.6,1],[554.2,274.6,1],[531.9,274.6,1],[509.7,318.7,1],[509.7,340.9,1],[531.9,363.1,1],[554.2,385,1],[576,385,1],[598.3,385,1],[620.5,385,1],[620.5,363.1,1],[598.3,363.1,1],[576,363.1,1],[554.2,363.1,1],[531.9,385,1],[509.7,407.2,1],[509.7,429.5,1],[509.7,451.3,1],[531.9,473.6,1],[554.2,495.8,1],[576,495.8,1],[598.3,495.8,1],[620.5,495.8,1],[620.5,473.6,1],[598.3,473.6,1],[576,473.6,1],[554.2,473.6,1],[531.9,495.8,1],[509.7,495.8,1],[487.9,495.8,1],[509.7,473.6,1],[487.9,473.6,1],[487.9,451.3,1],[487.9,429.5,1],[487.9,407.2,1],[487.9,385,1],[509.7,385,1],[509.7,363.1,1],[487.9,363.1,1],[487.9,340.9,1],[487.9,318.7,1],[509.7,274.6,1],[487.9,296.8,1],[666.7,274.6,2],[688.6,296.8,2],[688.6,318.7,2],[688.6,340.9,2],[688.6,363.1,2],[688.6,385,2],[688.6,407.2,2],[688.6,429.5,2],[688.6,451.3,2],[710.8,473.6,2],[733.1,495.8,2],[754.9,495.8,2],[777.2,495.8,2],[799.4,495.8,2],[799.4,473.6,2],[777.2,473.6,2],[754.9,473.6,2],[733.1,473.6,2],[710.8,495.8,2],[688.6,495.8,2],[666.7,495.8,2],[688.6,473.6,2],[666.7,473.6,2],[666.7,451.3,2],[666.7,429.5,2],[666.7,407.2,2],[666.7,385,2],[666.7,363.1,2],[666.7,340.9,2],[666.7,318.7,2],[688.6,274.6,2],[666.7,296.8,2],[836.7,274.6,3],[858.6,296.8,3],[858.6,318.7,3],[858.6,340.9,3],[858.6,363.1,3],[858.6,385,3],[858.6,407.2,3],[858.6,429.5,3],[858.6,451.3,3],[880.8,473.6,3],[903,495.8,3],[924.9,495.8,3],[947.1,495.8,3],[969.3,495.8,3],[969.3,473.6,3],[947.1,473.6,3],[924.9,473.6,3],[903,473.6,3],[880.8,495.8,3],[858.6,495.8,3],[836.7,495.8,3],[858.6,473.6,3],[836.7,473.6,3],[836.7,451.3,3],[836.7,429.5,3],[836.7,407.2,3],[836.7,385,3],[836.7,363.1,3],[836.7,340.9,3],[836.7,318.7,3],[858.6,274.6,3],[836.7,296.8,3],[1006.6,296.8,4],[1028.5,318.7,4],[1050.7,296.8,4],[1072.9,296.8,4],[1094.8,296.8,4],[1117,318.7,4],[1139.3,340.9,4],[1139.3,363.1,4],[1139.3,385,4],[1139.3,407.2,4],[1139.3,429.5,4],[1139.3,451.3,4],[1139.3,473.6,4],[1117,495.8,4],[1094.8,495.8,4],[1072.9,495.8,4],[1050.7,495.8,4],[1028.5,495.8,4],[1006.6,473.6,4],[1028.5,451.3,4],[1028.5,429.5,4],[1028.5,407.2,4],[1028.5,385,4],[1028.5,363.1,4],[1006.6,363.1,4],[1006.6,385,4],[1006.6,407.2,4],[1006.6,429.5,4],[1006.6,451.3,4],[1028.5,473.6,4],[1050.7,473.6,4],[1072.9,473.6,4],[1094.8,473.6,4],[1117,473.6,4],[1117,451.3,4],[1117,429.5,4],[1117,407.2,4],[1117,385,4],[1117,363.1,4],[1139.3,318.7,4],[1139.3,296.8,4],[1117,340.9,4],[1117,296.8,4],[1117,274.6,4],[1094.8,274.6,4],[1072.9,274.6,4],[1050.7,274.6,4],[1028.5,340.9,4],[1006.6,340.9,4],[1028.5,296.8,4],[1028.5,274.6,4],[1006.6,318.7,4],[1275.1,274.6,5],[1297,296.8,5],[1297,318.7,5],[1297,340.9,5],[1297,363.1,5],[1297,385,5],[1297,407.2,5],[1297,429.5,5],[1297,451.3,5],[1297,473.6,5],[1297,495.8,5],[1275.1,495.8,5],[1275.1,473.6,5],[1275.1,451.3,5],[1275.1,429.5,5],[1275.1,407.2,5],[1275.1,385,5],[1275.1,363.1,5],[1275.1,340.9,5],[1275.1,318.7,5],[1297,274.6,5],[1275.1,296.8,5],[1344,274.6,6],[1365.8,296.8,6],[1365.8,318.7,6],[1349.3,338.4,6],[1365.8,274.6,6],[1344,296.8,6],[1412.4,274.6,7],[1434.3,296.8,7],[1456.5,296.8,7],[1478.7,296.8,7],[1501,318.7,7],[1523.2,340.9,7],[1523.2,363.1,7],[1523.2,385,7],[1523.2,407.2,7],[1523.2,429.5,7],[1523.2,451.3,7],[1523.2,473.6,7],[1523.2,495.8,7],[1501,495.8,7],[1501,473.6,7],[1501,451.3,7],[1501,429.5,7],[1501,407.2,7],[1501,385,7],[1501,363.1,7],[1523.2,318.7,7],[1545.1,296.8,7],[1566.9,296.8,7],[1589.2,318.7,7],[1611,340.9,7],[1611,363.1,7],[1611,385,7],[1611,407.2,7],[1611,429.5,7],[1611,451.3,7],[1611,473.6,7],[1611,495.8,7],[1589.2,495.8,7],[1589.2,473.6,7],[1589.2,451.3,7],[1589.2,429.5,7],[1589.2,407.2,7],[1589.2,385,7],[1589.2,363.1,7],[1611,318.7,7],[1611,296.8,7],[1589.2,340.9,7],[1589.2,296.8,7],[1589.2,274.6,7],[1566.9,274.6,7],[1545.1,274.6,7],[1522.8,274.6,7],[1501,340.9,7],[1522.8,296.8,7],[1500.6,296.8,7],[1500.6,274.6,7],[1478.7,274.6,7],[1456.5,274.6,7],[1434.3,318.7,7],[1434.3,340.9,7],[1434.3,363.1,7],[1434.3,385,7],[1434.3,407.2,7],[1434.3,429.5,7],[1434.3,451.3,7],[1434.3,473.6,7],[1434.3,495.8,7],[1412.4,495.8,7],[1412.4,473.6,7],[1412.4,451.3,7],[1412.4,429.5,7],[1412.4,407.2,7],[1412.4,385,7],[1412.4,363.1,7],[1412.4,340.9,7],[1412.4,318.7,7],[1434.3,274.6,7],[1412.4,296.8,7],[576.4,584,8],[598.3,606.3,8],[598.3,628.1,8],[598.3,650.4,8],[598.3,672.6,8],[598.3,694.5,8],[598.3,716.7,8],[598.3,738.9,8],[598.3,760.8,8],[598.3,783,8],[598.3,805.2,8],[576.4,805.2,8],[576.4,783,8],[576.4,760.8,8],[576.4,738.9,8],[576.4,716.7,8],[576.4,694.5,8],[576.4,672.6,8],[576.4,650.4,8],[576.4,628.1,8],[598.3,584,8],[576.4,606.3,8],[666.7,606.3,9],[688.6,628.1,9],[710.8,606.3,9],[733.1,606.3,9],[754.9,606.3,9],[777.2,628.1,9],[799.4,650.4,9],[799.4,628.1,9],[799.4,606.3,9],[777.2,650.4,9],[777.2,606.3,9],[777.2,584,9],[754.9,584,9],[733.1,584,9],[710.8,584,9],[688.6,650.4,9],[688.6,672.6,9],[688.6,694.5,9],[688.6,716.7,9],[688.6,738.9,9],[688.6,760.8,9],[710.8,783,9],[733.1,805.2,9],[754.9,805.2,9],[777.2,805.2,9],[799.4,783,9],[799.4,760.8,9],[799.4,738.9,9],[799.4,716.7,9],[777.2,716.7,9],[777.2,738.9,9],[777.2,760.8,9],[777.2,783,9],[754.9,783,9],[733.1,783,9],[710.8,805.2,9],[688.6,805.2,9],[688.6,783,9],[666.7,783,9],[666.7,760.8,9],[666.7,738.9,9],[666.7,716.7,9],[666.7,694.5,9],[666.7,672.6,9],[666.7,650.4,9],[688.6,606.3,9],[688.6,584,9],[666.7,628.1,9],[874,584.2,10],[895.8,606.4,10],[895.8,628.3,10],[895.8,650.5,10],[918.1,672.8,10],[940.3,694.6,10],[962.2,694.6,10],[984.4,716.9,10],[1006.6,739.1,10],[1006.6,760.9,10],[1006.6,783.2,10],[1006.6,805.4,10],[984.4,805.4,10],[984.4,783.2,10],[984.4,760.9,10],[1006.6,716.9,10],[1006.6,694.6,10],[1006.6,672.8,10],[1006.6,650.5,10],[1006.6,628.3,10],[1006.6,606.4,10],[1006.6,584.2,10],[984.4,584.2,10],[984.4,606.4,10],[984.4,628.3,10],[984.4,650.5,10],[984.4,739.1,10],[984.4,694.6,10],[984.4,672.8,10],[962.2,672.8,10],[940.3,672.8,10],[918.1,694.6,10],[895.8,716.9,10],[895.8,739.1,10],[895.8,760.9,10],[895.8,783.2,10],[895.8,805.4,10],[874,805.4,10],[874,783.2,10],[874,760.9,10],[874,739.1,10],[874,716.9,10],[874,694.6,10],[895.8,694.6,10],[895.8,672.8,10],[874,672.8,10],[874,650.5,10],[874,628.3,10],[895.8,584.2,10],[874,606.4,10],[1072.9,606.3,11],[1094.8,628.1,11],[1117,606.3,11],[1139.3,606.3,11],[1161.1,606.3,11],[1183.3,628.1,11],[1205.6,650.4,11],[1205.6,672.6,11],[1205.6,694.5,11],[1205.6,716.7,11],[1205.6,738.9,11],[1205.6,760.8,11],[1205.6,783,11],[1205.6,805.2,11],[1183.3,805.2,11],[1183.3,783,11],[1183.3,760.8,11],[1183.3,738.9,11],[1183.3,716.7,11],[1161.1,694.8,11],[1161.1,672.6,11],[1139.3,694.8,11],[1117,694.8,11],[1094.8,716.7,11],[1094.8,738.9,11],[1094.8,760.8,11],[1094.8,783,11],[1094.8,805.2,11],[1072.9,805.2,11],[1072.9,783,11],[1072.9,760.8,11],[1072.9,738.9,11],[1072.9,716.7,11],[1072.9,694.5,11],[1072.9,672.6,11],[1094.8,694.5,11],[1094.8,672.6,11],[1117,672.6,11],[1139.3,672.6,11],[1183.3,694.5,11],[1183.3,672.6,11],[1205.6,628.1,11],[1205.6,606.3,11],[1183.3,650.4,11],[1183.3,606.3,11],[1183.3,584,11],[1161.1,584,11],[1139.3,584,11],[1117,584,11],[1094.8,650.4,11],[1072.9,650.4,11],[1094.8,606.3,11],[1094.8,584,11],[1072.9,628.1,11],[1275.7,584,12],[1297.5,606.3,12],[1297.5,628.1,12],[1297.5,650.4,12],[1297.5,672.6,12],[1297.5,694.5,12],[1297.5,716.7,12],[1297.5,738.9,12],[1297.5,760.8,12],[1319.8,783,12],[1342,805.2,12],[1363.9,805.2,12],[1386.1,805.2,12],[1407.9,805.2,12],[1407.9,783,12],[1386.1,783,12],[1363.9,783,12],[1342,783,12],[1319.8,805.2,12],[1297.5,805.2,12],[1275.7,805.2,12],[1297.5,783,12],[1275.7,783,12],[1275.7,760.8,12],[1275.7,738.9,12],[1275.7,716.7,12],[1275.7,694.5,12],[1275.7,672.6,12],[1275.7,650.4,12],[1275.7,628.1,12],[1297.5,584,12],[1275.7,606.3,12],[1452.8,783,13],[1475,805.2,13],[1475,783,13],[1452.8,805.2,13],[309,584,14],[330.8,606.3,14],[353.1,606.3,14],[375.3,606.3,14],[397.5,628.1,14],[419.7,650.4,14],[419.7,672.6,14],[419.7,694.5,14],[419.7,716.7,14],[419.7,738.9,14],[419.7,760.8,14],[419.7,783,14],[419.7,805.2,14],[397.5,805.2,14],[397.5,783,14],[397.5,760.8,14],[397.5,738.9,14],[397.5,716.7,14],[397.5,694.5,14],[397.5,672.6,14],[419.7,628.1,14],[441.6,606.3,14],[463.5,606.3,14],[485.7,628.1,14],[507.6,650.4,14],[507.6,672.6,14],[507.6,694.5,14],[507.6,716.7,14],[507.6,738.9,14],[507.6,760.8,14],[507.6,783,14],[507.6,805.2,14],[485.7,805.2,14],[485.7,783,14],[485.7,760.8,14],[485.7,738.9,14],[485.7,716.7,14],[485.7,694.5,14],[485.7,672.6,14],[507.6,628.1,14],[507.6,606.3,14],[485.7,650.4,14],[485.7,606.3,14],[485.7,584,14],[463.5,584,14],[441.6,584,14],[419.4,584,14],[397.5,650.4,14],[419.4,606.3,14],[397.2,606.3,14],[397.2,584,14],[375.3,584,14],[353.1,584,14],[330.8,628.1,14],[330.8,650.4,14],[330.8,672.6,14],[330.8,694.5,14],[330.8,716.7,14],[330.8,738.9,14],[330.8,760.8,14],[330.8,783,14],[330.8,805.2,14],[309,805.2,14],[309,783,14],[309,760.8,14],[309,738.9,14],[309,716.7,14],[309,694.5,14],[309,672.6,14],[309,650.4,14],[309,628.1,14],[330.8,584,14],[309,606.3,14]];
+
+// the three greetings
+const MODES={
+  // HELLO I'M MICHAL. (two lines)
+  full:()=>P,
+  // HELLO. : the full stop moves up next to the O
+  hello:()=>P.filter(p=>p[2]<=4).concat(P.filter(p=>p[2]===13).map(p=>[p[0]-267.8,p[1]-309.4,13])),
+  // HI : the I of I'M moves next to the H
+  hi:()=>P.filter(p=>p[2]===0||p[2]===5).map(p=>p[2]===5?[p[0]-787.2,p[1],5]:p),
+};
+let mode='full',circles=[],letters=[],BX=0,BY=0,BW=1,BH=1,cursorRadius=45.5,cursorBorder=45.5;
+
+function build(m){
+  mode=m;const pts=MODES[m]();
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const p of pts){x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);}
+  BX=x0-ballRadius;BY=y0-ballRadius;BW=x1-x0+2*ballRadius;BH=y1-y0+2*ballRadius;
+  // dots fly in from where the old ones were, so switching looks like the letters rearranging
+  const old=circles;
+  circles=pts.map((p,i)=>{const o=old.length?old[i%old.length]:null;
+    return {x:o?o.x:p[0],y:o?o.y:p[1],homeX:p[0],homeY:p[1],letter:p[2],vx:0,vy:0,awayFrames:0,ghost:false};});
+  letters=[];for(const c of circles)(letters[c.letter]=letters[c.letter]||[]).push(c);
+  for(const b of document.querySelectorAll('#modes button'))b.setAttribute('aria-pressed',b.dataset.mode===m);
+  fit(old.length>0);
+}
+
+// fit the greeting to the screen, leaving room for the buttons at the bottom
+let sc=1,ox=0,oy=0,dpr=1,wall={l:0,t:0,r:1920,b:1080},W=0,H=0;
+function fit(keep){
+  const prev={sc,ox,oy};
+  W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,3);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  const pad=Math.max(16,W*.06),bottom=110,top=70;
+  sc=Math.min((W-2*pad)/BW,(H-top-bottom)/BH);
+  ox=(W-BW*sc)/2-BX*sc;oy=top+(H-top-bottom-BH*sc)/2-BY*sc;
+  wall={l:-ox/sc,t:-oy/sc,r:(W-ox)/sc,b:(H-oy)/sc};
+  // the push area is about a fingertip on screen, whatever the size of the letters
+  cursorRadius=34/sc;cursorBorder=22/sc;
+  // keep dots where they are on screen when the scale changes
+  if(keep)for(const c of circles){
+    const sx=c.x*prev.sc+prev.ox,sy=c.y*prev.sc+prev.oy;c.x=(sx-ox)/sc;c.y=(sy-oy)/sc;}
+}
+addEventListener('resize',()=>fit(true));
+
+// finger / mouse push (no visible ball). Let go and the letters rebuild.
+const OFF=-1e5,cursor={x:OFF,y:OFF};let down=false,hover=false;
+function push(cx,cy){cursor.x=(cx-ox)/sc;cursor.y=(cy-oy)/sc;}
+function off(){cursor.x=cursor.y=OFF;}
+cv.addEventListener('pointerdown',e=>{down=true;push(e.clientX,e.clientY);try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+cv.addEventListener('pointermove',e=>{if(down||e.pointerType==='mouse'){hover=e.pointerType==='mouse';push(e.clientX,e.clientY);}});
+const up=e=>{down=false;if(e.pointerType!=='mouse')off();};
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&!down)off();});
+
+for(const b of document.querySelectorAll('#modes button'))b.addEventListener('click',()=>{if(b.dataset.mode!==mode)build(b.dataset.mode);});
+
+// inside each letter two dots trade target spots when that shortens the total way home
+function shareSpotsWithinLetters(){
+  for(const group of letters){if(!group||group.length<2)continue;const n=group.length;
+    for(let t=0;t<swapTriesPerLetter;t++){const a=group[(Math.random()*n)|0],b=group[(Math.random()*n)|0];if(a===b)continue;
+      const now=(a.x-a.homeX)**2+(a.y-a.homeY)**2+(b.x-b.homeX)**2+(b.y-b.homeY)**2;
+      const sw=(a.x-b.homeX)**2+(a.y-b.homeY)**2+(b.x-a.homeX)**2+(b.y-a.homeY)**2;
+      if(sw<now-1){const hx=a.homeX,hy=a.homeY;a.homeX=b.homeX;a.homeY=b.homeY;b.homeX=hx;b.homeY=hy;}}}}
+function moveBalls(){
+  const zone=cursorRadius+cursorBorder+ballRadius;
+  for(const c of circles){
+    const dx=c.x-cursor.x,dy=c.y-cursor.y,d=Math.hypot(dx,dy);
+    if(d<zone){const k=d>0?zone/d:1;
+      c.vx+=(cursor.x+dx*k-c.x)*pushStrength;c.vy+=(cursor.y+dy*k-c.y)*pushStrength;
+      c.vx*=friction;c.vy*=friction;c.awayFrames=0;c.ghost=false;}
+    else{const hx=c.homeX-c.x,hy=c.homeY-c.y,hd=Math.hypot(hx,hy),speed=Math.min(hd*returnGain,returnMaxSpeed);
+      const wx=hd>0?hx/hd*speed:0,wy=hd>0?hy/hd*speed:0;
+      c.vx+=(wx-c.vx)*steer;c.vy+=(wy-c.vy)*steer;
+      if(hd>snapDistance)c.awayFrames++;else{c.awayFrames=0;c.ghost=false;}
+      if(c.awayFrames>ghostAfter)c.ghost=true;}
+    const sp=Math.hypot(c.vx,c.vy);if(sp>maxSpeed){c.vx*=maxSpeed/sp;c.vy*=maxSpeed/sp;}
+    c.x+=c.vx;c.y+=c.vy;}}
+function separateBalls(){
+  const minD=ballRadius*2+minDistance,n=circles.length;
+  for(let i=0;i<n;i++){const a=circles[i];if(a.ghost)continue;
+    for(let j=i+1;j<n;j++){const b=circles[j];if(b.ghost)continue;
+      const dx=b.x-a.x;if(dx>minD||dx<-minD)continue;const dy=b.y-a.y;if(dy>minD||dy<-minD)continue;
+      const d=Math.hypot(dx,dy);
+      if(d<minD&&d>0){const p=(minD-d)*0.5*collisionSoftness/d;a.x-=dx*p;a.y-=dy*p;b.x+=dx*p;b.y+=dy*p;}}}}
+function bounceOffWalls(){const r=ballRadius;
+  for(const c of circles){
+    if(c.x<wall.l+r){c.x=wall.l+r;c.vx=Math.abs(c.vx)*wallBounce;}
+    if(c.x>wall.r-r){c.x=wall.r-r;c.vx=-Math.abs(c.vx)*wallBounce;}
+    if(c.y<wall.t+r){c.y=wall.t+r;c.vy=Math.abs(c.vy)*wallBounce;}
+    if(c.y>wall.b-r){c.y=wall.b-r;c.vy=-Math.abs(c.vy)*wallBounce;}}}
+function settle(){
+  for(const c of circles)
+    if(Math.abs(c.homeX-c.x)<snapDistance&&Math.abs(c.homeY-c.y)<snapDistance&&Math.abs(c.vx)<0.05&&Math.abs(c.vy)<0.05){
+      c.x=c.homeX;c.y=c.homeY;c.vx=0;c.vy=0;}}
+function draw(){
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.setTransform(dpr*sc,0,0,dpr*sc,dpr*ox,dpr*oy);
+  ctx.fillStyle='#000';ctx.beginPath();
+  for(const c of circles){ctx.moveTo(c.x+ballRadius,c.y);ctx.arc(c.x,c.y,ballRadius,0,Math.PI*2);}
+  ctx.fill();}
+
+build('full');
+(function frame(){
+  requestAnimationFrame(frame);
+  shareSpotsWithinLetters();moveBalls();separateBalls();bounceOffWalls();settle();draw();
+})();
+}
+</script>
+<script src="../versions.js"></script>
+</body>
+</html>
