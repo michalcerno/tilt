@@ -144,6 +144,9 @@ let last=performance.now();
 })(performance.now());
 }
 </script>
-<script src="../versions.js"></script>
+<script>
+// load the versions menu fresh every time, so a newly added version shows up straight away
+{const s=document.createElement('script');s.src='../versions.js?t='+Date.now();document.body.appendChild(s);}
+</script>
 </body>
 </html>

@@ -21,6 +21,9 @@
   <p>Pick a version to play. Inside any version, tap ≡ in the corner to switch to another.</p>
   <nav id="home-list"></nav>
 </main>
-<script src="versions.js"></script>
+<script>
+// load the versions menu fresh every time, so a newly added version shows up straight away
+{const s=document.createElement('script');s.src='versions.js?t='+Date.now();document.body.appendChild(s);}
+</script>
 </body>
 </html>

@@ -11,7 +11,7 @@
     {path:'hello/',  name:'Hello',         about:'A greeting made of dots that scatter from your finger. Pick Hello, I\'m Michal. / Hello. / Hi.'},
     {path:'hello-shake/',name:'Hello shake', about:'The Hello greeting, and a strong shake of the phone sends the dots flying.'},
   ];
-  const base=new URL('./',document.currentScript.src);
+  const base=new URL('./',(document.currentScript||document.querySelector('script[src*="versions.js"]')).src);
   const here=location.pathname.replace(/index\.html$/,'');
 
   const css=document.createElement('style');
