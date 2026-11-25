@@ -95,9 +95,11 @@ function hit(v){if(v>220&&navigator.vibrate){try{navigator.vibrate(Math.min(25,M
 
 // physics: gravity along the tilt, drag, rolling resistance, walls keep 92%
 function step(dt){
-  const k=Math.min(1,dt*12);sx+=(tx-sx)*k;sy+=(ty-sy)*k;
+  // how quickly the ball responds to a change in tilt (higher = faster)
+  const k=Math.min(1,dt*24);sx+=(tx-sx)*k;sy+=(ty-sy)*k;
   if(drag)return;
-  const G=2600*(Math.min(W,H)/380);
+  // tilt sensitivity: how hard a given tilt pulls the ball
+  const G=5200*(Math.min(W,H)/380);
   ball.vx+=sx*G*dt;ball.vy+=sy*G*dt;
   const f=Math.exp(-.55*dt);ball.vx*=f;ball.vy*=f;
   const s=Math.hypot(ball.vx,ball.vy),roll=26*dt;
