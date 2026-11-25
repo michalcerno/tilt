@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<title>Bouncer</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;overscroll-behavior:none}
+  body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;font:15px/1.4 system-ui,-apple-system,sans-serif}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #note{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 34px);text-align:center;color:#000;font-size:13px;pointer-events:none;transition:opacity 1.2s}
+  #note.off{opacity:0}
+</style>
+</head>
+<body>
+<canvas id="t"></canvas>
+<div id="note">Grab the red ball and hit the black one.</div>
+<script>
+{
+// Bouncer: zero gravity, slow motion (from No tilt v4).
+// The black ball can't be touched. You move it only by hitting it with the red ball.
+const SLOW=.4;      // time runs at 40% speed, for the balls and for your finger
+const FOLLOW=7;     // how quickly the red ball catches up with your finger while held
+const DRIFT=.03;    // almost no air: a ball keeps floating for a long time
+const BOUNCE=.92;   // walls keep 92% of the speed
+const HIT=.92;      // ball-on-ball hits keep 92% of the speed
+const MAXV=7000;    // speed limit, in pixels per second
+const THROW=.5;     // how much of your finger's speed the red ball takes on release
+const FLICK=2500;   // fast flicks get extra: at this finger speed (px/s) the boost doubles
+const SIZE=1.3;     // the red ball is 30% bigger than the black one
+
+const cv=document.getElementById('t'),ctx=cv.getContext('2d'),note=document.getElementById('note');
+let W=0,H=0,dpr=1,inset={t:0,b:0,l:0,r:0};
+const ball={x:0,y:0,vx:0,vy:0,r:20,color:'#000'};
+const red={x:0,y:0,vx:0,vy:0,r:26,color:'#e0281e'};
+
+function readInsets(){
+  const p=document.createElement('div');
+  p.style.cssText='position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);right:env(safe-area-inset-right)';
+  document.body.appendChild(p);const b=p.getBoundingClientRect();
+  inset={t:b.top,l:b.left,b:innerHeight-b.bottom,r:innerWidth-b.right};p.remove();
+}
+function fit(){
+  const k=[ball,red].map(o=>[W?o.x/W:0,H?o.y/H:0]);
+  W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,3);
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);readInsets();
+  ball.r=Math.round(Math.min(W,H)*.055);red.r=Math.round(ball.r*SIZE);
+  [ball,red].forEach((o,i)=>{o.x=k[i][0]*W;o.y=k[i][1]*H;});
+}
+addEventListener('resize',fit);fit();
+ball.x=W/2;ball.y=H*.35;red.x=W/2;red.y=H*.7;
+
+// walls: the screen edges, clear of the notch and home bar
+function bounds(){return {l:inset.l,t:inset.t,r:W-inset.r,b:H-inset.b};}
+
+// hold and throw the red ball: it floats after your finger, and keeps its speed when you let go
+let drag=false,fx=0,fy=0,trail=[];
+cv.addEventListener('pointerdown',e=>{
+  const dx=e.clientX-red.x,dy=e.clientY-red.y;
+  if(dx*dx+dy*dy<(red.r*2.5)**2){
+    drag=true;fx=e.clientX;fy=e.clientY;trail=[{x:fx,y:fy,t:performance.now()}];note.classList.add('off');
+    try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  }
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;fx=e.clientX;fy=e.clientY;
+  trail.push({x:fx,y:fy,t:performance.now()});if(trail.length>10)trail.shift();
+});
+function release(){
+  if(!drag)return;drag=false;
+  const now=performance.now(),b=trail[trail.length-1];let a=trail[0];
+  for(const q of trail){if(now-q.t<80){a=q;break;}}
+  const dt=(b.t-a.t)/1000;
+  if(dt>.005&&now-b.t<100){
+    const vx=(b.x-a.x)/dt,vy=(b.y-a.y)/dt,sp=Math.hypot(vx,vy),g=THROW*(1+sp/FLICK);
+    if(sp*g>Math.hypot(red.vx,red.vy)){red.vx=vx*g;red.vy=vy*g;}
+  }
+}
+cv.addEventListener('pointerup',release);cv.addEventListener('pointercancel',release);
+
+function buzz(v){if(v>150&&navigator.vibrate){try{navigator.vibrate(Math.min(20,Math.round(v/80)))}catch(_){}}}
+
+function cap(o){const s=Math.hypot(o.vx,o.vy);if(s>MAXV){o.vx*=MAXV/s;o.vy*=MAXV/s;}}
+function walls(o){
+  const B=bounds(),r=o.r;
+  if(o.x<B.l+r){o.x=B.l+r;if(o.vx<0){buzz(-o.vx);o.vx=-o.vx*BOUNCE}}
+  if(o.x>B.r-r){o.x=B.r-r;if(o.vx>0){buzz(o.vx);o.vx=-o.vx*BOUNCE}}
+  if(o.y<B.t+r){o.y=B.t+r;if(o.vy<0){buzz(-o.vy);o.vy=-o.vy*BOUNCE}}
+  if(o.y>B.b-r){o.y=B.b-r;if(o.vy>0){buzz(o.vy);o.vy=-o.vy*BOUNCE}}
+}
+
+// red hits black. While you hold the red ball it acts like a wall that moves with your finger;
+// once thrown, both balls share the hit, the bigger red one pushing harder.
+function collide(){
+  const dx=ball.x-red.x,dy=ball.y-red.y,d=Math.hypot(dx,dy),min=ball.r+red.r;
+  if(d>=min||d===0)return;
+  const nx=dx/d,ny=dy/d,over=min-d;
+  const mb=ball.r*ball.r,mr=drag?Infinity:red.r*red.r;
+  const wb=drag?1:mr/(mb+mr);
+  ball.x+=nx*over*wb;ball.y+=ny*over*wb;
+  if(!drag){red.x-=nx*over*(1-wb);red.y-=ny*over*(1-wb);}
+  const rel=(ball.vx-red.vx)*nx+(ball.vy-red.vy)*ny;
+  if(rel>=0)return;   // already moving apart
+  const j=-(1+HIT)*rel;
+  buzz(j*.6);
+  if(drag){ball.vx+=j*nx;ball.vy+=j*ny;}
+  else{
+    const ib=mr/(mb+mr),ir=mb/(mb+mr);
+    ball.vx+=j*ib*nx;ball.vy+=j*ib*ny;red.vx-=j*ir*nx;red.vy-=j*ir*ny;
+  }
+}
+
+function step(dt){
+  if(drag){red.vx=(fx-red.x)*FOLLOW;red.vy=(fy-red.y)*FOLLOW;}
+  else{const f=Math.exp(-DRIFT*dt);red.vx*=f;red.vy*=f;}
+  const f=Math.exp(-DRIFT*dt);ball.vx*=f;ball.vy*=f;
+  cap(red);cap(ball);
+  red.x+=red.vx*dt;red.y+=red.vy*dt;ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+  walls(red);collide();walls(ball);
+}
+
+function dot(o){ctx.fillStyle=o.color;ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,7);ctx.fill();}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  dot(red);dot(ball);
+}
+
+let last=performance.now();
+(function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.033,(now-last)/1000||.016)*SLOW;last=now;
+  for(let i=0;i<4;i++)step(dt/4);   // small steps so a fast red ball can't skip through the black one
+  draw();
+})(performance.now());
+}
+</script>
+</body>
+</html>
