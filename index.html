@@ -2,130 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<title>Tilt table</title>
+<title>Tilt</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#fff;overscroll-behavior:none}
-  body{position:fixed;inset:0;touch-action:none;-webkit-user-select:none;user-select:none;font:15px/1.4 system-ui,-apple-system,sans-serif}
-  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-  #gate{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.85);transition:opacity .4s}
-  #gate.off{opacity:0;pointer-events:none}
-  #gate div{text-align:center;color:#000;padding:24px;max-width:320px}
-  #gate p{margin:12px 0 0;color:#000}
-  #go{font:500 17px/1 system-ui,-apple-system,sans-serif;color:#fff;background:#000;border:0;border-radius:999px;padding:16px 28px;min-height:48px;cursor:pointer}
-  #note{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 34px);text-align:center;color:#000;font-size:13px;pointer-events:none}
+  html{background:#fff}
+  body{margin:0;background:#fff;color:#000;font:15px/1.4 system-ui,-apple-system,sans-serif;
+    padding:calc(env(safe-area-inset-top) + 32px) max(20px,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 32px) max(20px,env(safe-area-inset-left))}
+  main{max-width:520px;margin:0 auto}
+  h1{margin:0;font-size:34px;letter-spacing:-.5px;display:flex;align-items:center;gap:12px}
+  h1 i{width:26px;height:26px;border-radius:50%;background:#000;display:inline-block}
+  p{margin:8px 0 24px;color:#444}
 </style>
 </head>
 <body>
-<canvas id="t"></canvas>
-<div id="note"></div>
-<div id="gate"><div>
-  <button id="go" type="button">Start</button>
-  <p id="msg">Tilt your phone to roll the ball. You can also drag and flick it.</p>
-</div></div>
-<script>
-{
-const cv=document.getElementById('t'),ctx=cv.getContext('2d'),gate=document.getElementById('gate'),msg=document.getElementById('msg'),note=document.getElementById('note');
-let W=0,H=0,dpr=1,rail=0,ball={x:0,y:0,vx:0,vy:0,r:20},tx=0,ty=0,sx=0,sy=0,got=false;
-let inset={t:0,b:0,l:0,r:0};
-
-function readInsets(){
-  const p=document.createElement('div');
-  p.style.cssText='position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);right:env(safe-area-inset-right)';
-  document.body.appendChild(p);const b=p.getBoundingClientRect();
-  inset={t:b.top,l:b.left,b:innerHeight-b.bottom,r:innerWidth-b.right};p.remove();
-}
-function fit(){
-  const ox=W?ball.x/W:.5,oy=H?ball.y/H:.5;
-  W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,3);
-  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);readInsets();
-  const m=Math.min(W,H);rail=0;ball.r=Math.round(m*.055);
-  ball.x=ox*W;ball.y=oy*H;
-}
-addEventListener('resize',fit);fit();
-
-// walls: the screen edges, clear of the notch and home bar
-function bounds(){return {l:inset.l+rail,t:inset.t+rail,r:W-inset.r-rail,b:H-inset.b-rail};}
-
-// tilt: gamma = left/right, beta = front/back; rotate into screen axes
-function onOri(e){
-  if(e.beta==null||e.gamma==null)return;
-  if(!got){got=true;note.textContent='';}
-  const b=Math.max(-90,Math.min(90,e.beta))*Math.PI/180,g=e.gamma*Math.PI/180;
-  const gx=Math.sin(g),gy=Math.sin(b);
-  const a=((screen.orientation&&screen.orientation.angle)??(window.orientation||0))*Math.PI/180;
-  tx=gx*Math.cos(a)+gy*Math.sin(a);
-  ty=-gx*Math.sin(a)+gy*Math.cos(a);
-}
-function listen(){
-  addEventListener('deviceorientation',onOri);
-  setTimeout(()=>{if(!got)note.textContent="No tilt data from this browser. Drag and flick the ball.";},1500);
-}
-document.getElementById('go').addEventListener('click',()=>{
-  const D=window.DeviceOrientationEvent;
-  if(D&&typeof D.requestPermission==='function'){
-    D.requestPermission().then(r=>{
-      if(r==='granted')listen();else note.textContent='Motion access was declined. Drag and flick the ball.';
-      gate.classList.add('off');
-    }).catch(()=>{note.textContent='Motion access is unavailable here. Drag and flick the ball.';gate.classList.add('off');});
-  }else{if(D)listen();else note.textContent='No tilt sensor. Drag and flick the ball.';gate.classList.add('off');}
-});
-
-// drag and flick
-let drag=false,trail=[];
-const pos=e=>({x:e.clientX,y:e.clientY,t:performance.now()});
-cv.addEventListener('pointerdown',e=>{
-  const p=pos(e),dx=p.x-ball.x,dy=p.y-ball.y;
-  if(dx*dx+dy*dy<(ball.r*2.4)**2){drag=true;trail=[p];ball.vx=ball.vy=0;try{cv.setPointerCapture(e.pointerId)}catch(_){}}
-});
-cv.addEventListener('pointermove',e=>{
-  if(!drag)return;const p=pos(e),B=bounds();trail.push(p);if(trail.length>8)trail.shift();
-  ball.x=Math.max(B.l+ball.r,Math.min(B.r-ball.r,p.x));ball.y=Math.max(B.t+ball.r,Math.min(B.b-ball.r,p.y));
-});
-function release(){
-  if(!drag)return;drag=false;const now=performance.now();let a=trail[0];const b=trail[trail.length-1];
-  for(const q of trail){if(now-q.t<90){a=q;break;}}
-  const dt=(b.t-a.t)/1000;if(dt>.005&&now-b.t<120){ball.vx=(b.x-a.x)/dt;ball.vy=(b.y-a.y)/dt;}
-  const m=4000,s=Math.hypot(ball.vx,ball.vy);if(s>m){ball.vx*=m/s;ball.vy*=m/s;}
-}
-cv.addEventListener('pointerup',release);cv.addEventListener('pointercancel',release);
-
-function hit(v){if(v>220&&navigator.vibrate){try{navigator.vibrate(Math.min(25,Math.round(v/60)))}catch(_){}}}
-
-// physics: gravity along the tilt, drag, rolling resistance, walls keep 92%
-function step(dt){
-  const k=Math.min(1,dt*12);sx+=(tx-sx)*k;sy+=(ty-sy)*k;
-  if(drag)return;
-  const G=2600*(Math.min(W,H)/380);
-  ball.vx+=sx*G*dt;ball.vy+=sy*G*dt;
-  const f=Math.exp(-.55*dt);ball.vx*=f;ball.vy*=f;
-  const s=Math.hypot(ball.vx,ball.vy),roll=26*dt;
-  if(s<roll&&Math.hypot(sx,sy)<.035){ball.vx=ball.vy=0}
-  else if(s>0){const q=Math.max(0,s-roll)/s;ball.vx*=q;ball.vy*=q;}
-  ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
-  const B=bounds(),r=ball.r,e=.92;
-  if(ball.x<B.l+r){ball.x=B.l+r;if(ball.vx<0){hit(-ball.vx);ball.vx=-ball.vx*e}}
-  if(ball.x>B.r-r){ball.x=B.r-r;if(ball.vx>0){hit(ball.vx);ball.vx=-ball.vx*e}}
-  if(ball.y<B.t+r){ball.y=B.t+r;if(ball.vy<0){hit(-ball.vy);ball.vy=-ball.vy*e}}
-  if(ball.y>B.b-r){ball.y=B.b-r;if(ball.vy>0){hit(ball.vy);ball.vy=-ball.vy*e}}
-}
-
-function draw(){
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='#000';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,7);ctx.fill();
-}
-
-ball.x=W/2;ball.y=H/2;
-let last=performance.now();
-(function frame(now){
-  requestAnimationFrame(frame);
-  const dt=Math.min(.033,(now-last)/1000||.016);last=now;
-  step(dt/2);step(dt/2);draw();
-})(performance.now());
-}
-</script>
+<main>
+  <h1><i></i>Tilt</h1>
+  <p>Pick a version to play. Inside any version, tap ≡ in the corner to switch to another.</p>
+  <nav id="home-list"></nav>
+</main>
 <script src="versions.js"></script>
 </body>
 </html>
